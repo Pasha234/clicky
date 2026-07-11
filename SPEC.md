@@ -23,7 +23,8 @@ Main services:
 - `worker`: Go queue consumer that writes events to ClickHouse.
 - `queue`: RabbitMQ for MVP, Kafka as an optional future alternative.
 - `clickhouse`: analytics storage.
-- `postgres` or `mysql`: admin application database.
+- `postgres`: relational storage for users, passwords, sites, tokens, and settings.
+- `pgbouncer`: connection pool between application services and PostgreSQL.
 - `redis`: token cache, rate limiting, and optional session/cache storage.
 
 Recommended MVP data flow:
@@ -42,7 +43,8 @@ Browser tracking script
 Recommended stack:
 
 - Laravel 11/12 or Symfony 7.
-- PostgreSQL or MySQL for application data.
+- PostgreSQL for users, passwords, sites, API tokens, and settings.
+- PgBouncer as the only database endpoint for application traffic.
 - ClickHouse client for analytics queries.
 - Blade, Inertia, Livewire, Vue, or React for UI.
 - Chart.js, ECharts, or ApexCharts for charts.
@@ -157,7 +159,7 @@ Functional requirements:
 - Accept GET and POST events.
 - Validate required fields.
 - Derive IP and user agent from request headers when missing.
-- Validate token using Redis cache.
+- Validate the site token with a fast PostgreSQL query through PgBouncer.
 - Apply request size limits.
 - Apply rate limiting by token and IP.
 - Publish valid events to RabbitMQ.
@@ -174,6 +176,7 @@ zap or zerolog
 prometheus/client_golang
 rabbitmq/amqp091-go
 redis/go-redis
+jackc/pgx/v5
 ```
 
 Collector metrics:
@@ -362,17 +365,43 @@ GET  /metrics
 
 Token validation options:
 
-1. Go collector calls PHP API.
-2. Go collector reads from Redis.
-3. Go collector reads from replicated database table.
+1. Go collector reads PostgreSQL through PgBouncer.
+2. Go collector reads from Redis cache backed by PostgreSQL.
+3. Go collector calls PHP API.
 4. Worker resolves token later.
 
 Recommended MVP approach:
 
 ```text
-PHP writes active tokens to Redis.
-Go collector validates tokens from Redis.
+PHP creates, rotates, and revokes tokens in PostgreSQL.
+Laravel connects to PgBouncer on port `6432`.
+Go collector validates token existence and status with a parameterized SELECT through PgBouncer on port `6432`.
+Redis may cache active-token lookups after the PostgreSQL path is working.
 ```
+
+### PostgreSQL and PgBouncer
+
+PostgreSQL is the source of truth for relational application data. ClickHouse stores only analytical events and aggregations; it must not be used for users, authentication, sites, API tokens, or application settings.
+
+Connection flow:
+
+```text
+Laravel admin ---\
+                 -> PgBouncer:6432 -> PostgreSQL:5432
+Go collector ---/
+```
+
+Requirements:
+
+- Do not expose PostgreSQL publicly in production; only PgBouncer is reachable by `admin` and `collector`.
+- Use a dedicated application database user with the least required privileges.
+- Store PostgreSQL and PgBouncer credentials in environment variables locally and Kubernetes Secrets in deployed environments.
+- Configure PgBouncer in `transaction` pool mode for high concurrency.
+- Application queries must not depend on session state, temporary tables, `SET` commands, or persistent prepared statements because connections can change between transactions.
+- Laravel uses the PgBouncer host and port in `DB_HOST` and `DB_PORT`; Go uses the same endpoint in its `DATABASE_URL`.
+- The collector checks that the token exists, is active, and belongs to an enabled site before publishing an event to RabbitMQ.
+- Set database client pool limits in Laravel and Go below PgBouncer's pool capacity; PgBouncer limits must remain below PostgreSQL's `max_connections`.
+- Expose PgBouncer health and pool metrics, including active, waiting, and idle client/server connections.
 
 ## 10. Infrastructure
 
@@ -382,6 +411,7 @@ Required Docker Compose services:
 services:
   admin:
   postgres:
+  pgbouncer:
   redis:
   collector:
   worker:
@@ -410,6 +440,8 @@ k8s/
   rabbitmq-statefulset.yaml
   clickhouse-statefulset.yaml
   postgres-statefulset.yaml
+  pgbouncer-deployment.yaml
+  pgbouncer-service.yaml
   redis-deployment.yaml
   configmaps.yaml
   secrets.yaml
@@ -433,6 +465,7 @@ PHP application:
 - Authentication logs.
 - Failed job logs.
 - ClickHouse query duration logs.
+- PgBouncer connection and wait-time metrics.
 - Analytics API latency.
 
 Grafana dashboards:
@@ -444,6 +477,7 @@ Grafana dashboards:
 - Worker failure rate.
 - ClickHouse insert latency.
 - ClickHouse query latency.
+- PgBouncer client wait count and pool utilization.
 
 ## 12. Security
 
@@ -467,6 +501,7 @@ Requirements:
 
 - Docker Compose file.
 - PHP app starts.
+- PostgreSQL and PgBouncer start; Laravel connects through PgBouncer.
 - Go collector starts.
 - RabbitMQ starts.
 - ClickHouse starts.
@@ -538,11 +573,13 @@ Go collector unit tests:
 - Request parsing.
 - Event validation.
 - Token validation.
+- PostgreSQL token lookup through PgBouncer.
 - Queue publisher mock.
 
 Go collector integration tests:
 
 - Publish event to RabbitMQ.
+- Validate active and revoked tokens through PgBouncer.
 - Reject invalid token.
 - Reject oversized payload.
 
@@ -600,6 +637,7 @@ The MVP is complete when:
 - A user can register and log in.
 - A user can create a site.
 - The system generates a tracking token.
+- Laravel and Go collector connect to PostgreSQL through PgBouncer, not directly.
 - The system displays a tracking snippet.
 - A browser can send an event to the collector.
 - The Go collector publishes the event to RabbitMQ.
