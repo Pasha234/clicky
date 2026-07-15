@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: clicky-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: clicky
+      POSTGRES_USER: clicky
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clicky_local_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=clicky --dbname=clicky"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: clicky-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: clicky
+      DB_USER: clicky
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-clicky_local_password}
+      AUTH_TYPE: plain
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+      MAX_PREPARED_STATEMENTS: 100
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: clicky-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clicky-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: clicky
+      CLICKHOUSE_USER: clicky
+      CLICKHOUSE_PASSWORD: clicky_local_password
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' --user clicky --password clicky_local_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    container_name: clicky-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: clicky
+      RABBITMQ_DEFAULT_PASS: clicky_local_password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres-data:
+  redis-data:
+  clickhouse-data:
+  clickhouse-logs:
+  rabbitmq-data:
