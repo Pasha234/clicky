@@ -29,7 +29,7 @@ func NewRabbitMQPublisher(
 		return nil, fmt.Errorf("error creating rabbitmq connection: %w", err)
 	}
 
-	_, err = conn.Management().DeclareQueue(ctx, &rmq.QuorumQueueSpecification{Name: cfg.Queue})
+	err = declareEventTopology(ctx, conn.Management(), cfg.Queue)
 	if err != nil {
 		return nil, fmt.Errorf("error creating rabbitmq queue: %w", err)
 	}
@@ -78,12 +78,62 @@ func (p *RabbitMQPublisher) Publish(ctx context.Context, event *event.Event) err
 }
 
 func (p *RabbitMQPublisher) Ready(ctx context.Context) error {
-	_, err := p.connection.Management().DeclareQueue(
-		ctx,
-		&rmq.QuorumQueueSpecification{Name: p.queue},
-	)
+	err := declareEventTopology(ctx, p.connection.Management(), p.queue)
+
 	if err != nil {
 		return fmt.Errorf("RabbitMQ is not ready %w", err)
+	}
+
+	return nil
+}
+
+func declareEventTopology(
+	ctx context.Context,
+	management *rmq.AmqpManagement,
+	queueName string,
+) error {
+	deadLetterExchange := queueName + "_dlx"
+	deadLetterQueue := queueName + "_dead_letter"
+	deadLetterRoutingKey := queueName + ".dead"
+
+	if _, err := management.DeclareExchange(
+		ctx,
+		&rmq.DirectExchangeSpecification{
+			Name: deadLetterExchange,
+		},
+	); err != nil {
+		return fmt.Errorf("declare dead-letter exchange: %w", err)
+	}
+
+	if _, err := management.DeclareQueue(
+		ctx,
+		&rmq.ClassicQueueSpecification{
+			Name: deadLetterQueue,
+		},
+	); err != nil {
+		return fmt.Errorf("declare dead-letter queue: %w", err)
+	}
+
+	if _, err := management.Bind(
+		ctx,
+		&rmq.ExchangeToQueueBindingSpecification{
+			SourceExchange:   deadLetterExchange,
+			DestinationQueue: deadLetterQueue,
+			BindingKey:       deadLetterRoutingKey,
+		},
+	); err != nil {
+		return fmt.Errorf("bind dead-letter queue: %w", err)
+	}
+
+	if _, err := management.DeclareQueue(
+		ctx,
+		&rmq.ClassicQueueSpecification{
+			Name:                 queueName,
+			DeadLetterExchange:   deadLetterExchange,
+			DeadLetterRoutingKey: deadLetterRoutingKey,
+		},
+	); err != nil {
+		return fmt.Errorf("declare events queue: %w", err)
 	}
 
 	return nil
