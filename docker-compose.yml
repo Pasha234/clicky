@@ -96,6 +96,23 @@ services:
       retries: 10
       start_period: 10s
 
+  collector:
+    build:
+      context: ./collector
+    container_name: clicky-collector
+    restart: unless-stopped
+    environment:
+      RABBITMQ_URL: amqp://clicky:clicky_local_password@rabbitmq:5672/
+      RABBITMQ_QUEUE: click_events
+      DATABASE_URL: postgres://clicky:${POSTGRES_PASSWORD:-clicky_local_password}@pgbouncer:5432/clicky?sslmode=disable&default_query_exec_mode=exec
+    ports:
+      - "3000:3000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+
   worker:
     build:
       context: ./worker
@@ -117,6 +134,42 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+
+  admin:
+    build:
+      context: ./admin
+    container_name: clicky-admin
+    restart: unless-stopped
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      APP_KEY: ${ADMIN_APP_KEY:-base64:AfMVYqY0E5mP2rTJckcM6mEtgm13VblWPMYrt0W1P7A=}
+      DB_CONNECTION: pgsql
+      DB_HOST: pgbouncer
+      DB_PORT: 5432
+      DB_DATABASE: clicky
+      DB_USERNAME: clicky
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-clicky_local_password}
+      DB_SSLMODE: disable
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      COLLECTOR_URL: http://collector:3000
+    command: >
+      sh -c "php artisan migrate --force &&
+      php artisan serve --host=0.0.0.0 --port=8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      collector:
+        condition: service_started
 
 volumes:
   postgres-data:
