@@ -69,13 +69,28 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
-      - ./docker/clickhouse/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' --user clicky --password clicky_local_password"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  clickhouse-migrator:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clicky-clickhouse-migrator
+    restart: "no"
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_DATABASE: clicky
+      CLICKHOUSE_USER: clicky
+      CLICKHOUSE_PASSWORD: clicky_local_password
+    volumes:
+      - ./docker/clickhouse/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "/migrations/migrate.sh"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
 
   rabbitmq:
     image: rabbitmq:4-alpine
@@ -134,6 +149,8 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+      clickhouse-migrator:
+        condition: service_completed_successfully
 
   admin:
     build:
@@ -158,6 +175,10 @@ services:
       SESSION_DRIVER: database
       CACHE_STORE: database
       COLLECTOR_URL: http://collector:3000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: clicky
+      CLICKHOUSE_USERNAME: clicky
+      CLICKHOUSE_PASSWORD: clicky_local_password
     command: >
       sh -c "php artisan migrate --force &&
       php artisan serve --host=0.0.0.0 --port=8000"
@@ -170,6 +191,10 @@ services:
         condition: service_healthy
       collector:
         condition: service_started
+      clickhouse:
+        condition: service_healthy
+      clickhouse-migrator:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:
