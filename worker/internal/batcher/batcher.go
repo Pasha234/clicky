@@ -3,6 +3,7 @@ package batcher
 import (
 	"clicky-go-worker/internal/event"
 	"context"
+	"sync"
 )
 
 type Committer interface {
@@ -17,6 +18,7 @@ type PendingEvent struct {
 type Batcher struct {
 	pendingEvents []PendingEvent
 	size          int
+	mu            sync.Mutex
 }
 
 func New(size int) *Batcher {
@@ -30,11 +32,17 @@ func New(size int) *Batcher {
 }
 
 func (b *Batcher) Add(e PendingEvent) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.pendingEvents = append(b.pendingEvents, e)
 	return len(b.pendingEvents) >= b.size
 }
 
 func (b *Batcher) Take() []PendingEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if len(b.pendingEvents) == 0 {
 		return nil
 	}
@@ -46,5 +54,8 @@ func (b *Batcher) Take() []PendingEvent {
 }
 
 func (b *Batcher) Len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	return len(b.pendingEvents)
 }

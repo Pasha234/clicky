@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\TokenGenerator;
+use Database\Factories\SiteFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Site extends Model
 {
-    /** @use HasFactory<\Database\Factories\SiteFactory> */
+    /** @use HasFactory<SiteFactory> */
     use HasFactory, HasUuids;
 
     protected $fillable = [
@@ -79,7 +81,7 @@ class Site extends Model
             ->whereNull('revoked_at')
             ->update(['revoked_at' => now()]);
 
-        $token = 'clk_'.bin2hex(random_bytes(32));
+        $token = app(TokenGenerator::class)->generate();
 
         $apiToken = $this->apiTokens()->create([
             'token' => $token,

@@ -190,6 +190,7 @@ services:
   admin:
     build:
       context: ./admin
+      target: development
     container_name: clicky-admin
     restart: unless-stopped
     environment:
