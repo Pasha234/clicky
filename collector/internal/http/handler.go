@@ -18,8 +18,10 @@ type Handler struct {
 	fiber     *fiber.App
 }
 
+const maxRequestBodySize = 64 * 1024
+
 func NewHandler(publisher queue.Publisher, tokens token.Validator) *Handler {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{BodyLimit: maxRequestBodySize})
 
 	h := &Handler{
 		publisher: publisher,

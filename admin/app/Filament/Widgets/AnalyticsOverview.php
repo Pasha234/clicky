@@ -32,7 +32,6 @@ class AnalyticsOverview extends StatsOverviewWidget
         try {
             $summary = app(ClickHouseAnalytics::class)->summary($filter);
         } catch (RequestException|RuntimeException $e) {
-            dd($e);
             return [
                 Stat::make('Analytics unavailable', '—')
                     ->description('ClickHouse could not be reached.'),

@@ -2,6 +2,7 @@ package http
 
 import (
 	"clicky-go-collector/internal/event"
+	"clicky-go-collector/internal/ratelimit"
 	"clicky-go-collector/internal/token"
 	"context"
 	"encoding/json"
@@ -100,6 +101,22 @@ type fakeValidator struct {
 func (v *fakeValidator) Validate(_ context.Context, _ string) (string, error) {
 	return v.siteID, v.err
 }
+
+type fakeLimiter struct {
+	allowed bool
+	err     error
+	calls   int
+}
+
+func (l *fakeLimiter) Allow(_ context.Context, _ string, _ string) (bool, error) {
+	l.calls++
+	return l.allowed, l.err
+}
+
+func (l *fakeLimiter) Ready(_ context.Context) error { return nil }
+func (l *fakeLimiter) Close() error                  { return nil }
+
+var _ ratelimit.Limiter = (*fakeLimiter)(nil)
 
 func TestCollectPostRequest(t *testing.T) {
 	publisher := &fakePublisher{}
@@ -363,5 +380,55 @@ func TestCollectGetRequest(t *testing.T) {
 
 	if *publisher.published.Y != 1 {
 		t.Fatalf("published Y = %v, want %v", *publisher.published.Y, 1)
+	}
+}
+
+func TestCollectRejectsRateLimitedRequestWithoutPublishing(t *testing.T) {
+	publisher := &fakePublisher{}
+	limiter := &fakeLimiter{allowed: false}
+	handler := NewHandler(publisher, &fakeValidator{siteID: "site"}, Options{Limiter: limiter})
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/collect",
+		strings.NewReader(`{"token":"clk_test","event":"click","url":"https://example.com"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := handler.fiber.Test(request)
+	if err != nil {
+		t.Fatalf("app.Test() error = %v", err)
+	}
+
+	if response.StatusCode != fiber.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", response.StatusCode, fiber.StatusTooManyRequests)
+	}
+	if limiter.calls != 1 {
+		t.Fatalf("limiter calls = %d, want 1", limiter.calls)
+	}
+	if publisher.publishCalls != 0 {
+		t.Fatalf("publisher calls = %d, want 0", publisher.publishCalls)
+	}
+}
+
+func TestCORSAllowsConfiguredOrigin(t *testing.T) {
+	handler := NewHandler(
+		&fakePublisher{},
+		&fakeValidator{},
+		Options{CORSOrigins: "https://example.test"},
+	)
+	request := httptest.NewRequest(http.MethodOptions, "/collect", nil)
+	request.Header.Set("Origin", "https://example.test")
+	request.Header.Set("Access-Control-Request-Method", "POST")
+
+	response, err := handler.fiber.Test(request)
+	if err != nil {
+		t.Fatalf("app.Test() error = %v", err)
+	}
+
+	if response.StatusCode != fiber.StatusNoContent {
+		t.Fatalf("status = %d, want %d", response.StatusCode, fiber.StatusNoContent)
+	}
+	if origin := response.Header.Get("Access-Control-Allow-Origin"); origin != "https://example.test" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", origin)
 	}
 }
