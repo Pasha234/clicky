@@ -221,7 +221,8 @@ services:
       CLICKHOUSE_USERNAME: clicky
       CLICKHOUSE_PASSWORD: clicky_local_password
     command: >
-      sh -c "php artisan migrate --force &&
+      sh -c "php artisan config:clear &&
+      php artisan migrate --force &&
       php artisan serve --host=0.0.0.0 --port=8000"
     ports:
       - "8000:8000"

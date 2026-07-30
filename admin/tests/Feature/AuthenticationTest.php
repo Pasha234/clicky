@@ -10,6 +10,16 @@ beforeEach(function () {
     $this->withoutMiddleware(ValidateCsrfToken::class);
 });
 
+test('the root page sends guests to registration', function () {
+    $this->get('/')->assertRedirect('/register');
+});
+
+test('the root page sends authenticated users to the admin panel', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->get('/')->assertRedirect('/admin');
+});
+
 test('a visitor can register and is authenticated', function () {
     $response = $this->post('/register', [
         'name' => 'Pavel',

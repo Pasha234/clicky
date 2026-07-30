@@ -4,29 +4,21 @@ namespace App\Filament\Resources\Sites\Pages;
 
 use App\Filament\Resources\Sites\SiteResource;
 use Filament\Actions\Action;
-use Filament\Actions\DeleteAction;
-use Filament\Resources\Pages\EditRecord;
+use Filament\Resources\Pages\ViewRecord;
 
-class EditSite extends EditRecord
+class ViewSite extends ViewRecord
 {
     protected static string $resource = SiteResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('view')
-                ->label('Overview')
-                ->url(fn (): string => SiteResource::getUrl('view', ['record' => $this->getRecord()])),
+            Action::make('settings')
+                ->url(fn (): string => SiteResource::getUrl('settings', ['record' => $this->getRecord()])),
             Action::make('snippet')
                 ->url(fn (): string => SiteResource::getUrl('snippet', ['record' => $this->getRecord()])),
             Action::make('analytics')
                 ->url(fn (): string => SiteResource::getUrl('analytics', ['record' => $this->getRecord()])),
-            DeleteAction::make(),
         ];
-    }
-
-    public function getTitle(): string
-    {
-        return 'Site settings';
     }
 }

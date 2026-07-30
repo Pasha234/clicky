@@ -5,13 +5,16 @@ namespace App\Filament\Resources\Sites;
 use App\Filament\Resources\Sites\Pages\CreateSite;
 use App\Filament\Resources\Sites\Pages\EditSite;
 use App\Filament\Resources\Sites\Pages\ListSites;
+use App\Filament\Resources\Sites\Pages\SiteAnalytics;
+use App\Filament\Resources\Sites\Pages\SiteSnippet;
+use App\Filament\Resources\Sites\Pages\ViewSite;
 use App\Models\Site;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -43,20 +46,6 @@ class SiteResource extends Resource
                 Toggle::make('enabled')
                     ->default(true)
                     ->required(),
-                TextInput::make('tracking_token')
-                    ->label('Active tracking token')
-                    ->formatStateUsing(fn (?Site $record): ?string => $record?->activeToken?->token)
-                    ->disabled()
-                    ->dehydrated(false)
-                    ->copyable()
-                    ->columnSpanFull(),
-                Textarea::make('tracking_snippet')
-                    ->label('Tracking snippet')
-                    ->formatStateUsing(fn (?Site $record): ?string => $record?->trackingSnippet())
-                    ->disabled()
-                    ->dehydrated(false)
-                    ->rows(14)
-                    ->columnSpanFull(),
             ]);
     }
 
@@ -96,6 +85,13 @@ class SiteResource extends Resource
                             ->send();
                     }),
                 EditAction::make(),
+                Action::make('snippet')
+                    ->icon('heroicon-o-code-bracket')
+                    ->url(fn (Site $record): string => static::getUrl('snippet', ['record' => $record])),
+                Action::make('analytics')
+                    ->icon('heroicon-o-chart-bar')
+                    ->url(fn (Site $record): string => static::getUrl('analytics', ['record' => $record])),
+                ViewAction::make(),
                 DeleteAction::make(),
             ]);
     }
@@ -114,7 +110,10 @@ class SiteResource extends Resource
         return [
             'index' => ListSites::route('/'),
             'create' => CreateSite::route('/create'),
-            'edit' => EditSite::route('/{record}/edit'),
+            'view' => ViewSite::route('/{record}'),
+            'settings' => EditSite::route('/{record}/settings'),
+            'snippet' => SiteSnippet::route('/{record}/snippet'),
+            'analytics' => SiteAnalytics::route('/{record}/analytics'),
         ];
     }
 }

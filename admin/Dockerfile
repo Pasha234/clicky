@@ -35,6 +35,7 @@ RUN cp .env.example .env \
     && rm -f bootstrap/cache/*.php \
     && php artisan package:discover --ansi \
     && php artisan filament:upgrade --ansi \
+    && rm .env \
     && chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 8000
