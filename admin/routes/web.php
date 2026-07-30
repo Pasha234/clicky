@@ -17,7 +17,7 @@ Route::middleware('guest')->group(function (): void {
 
 Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth')->name('logout');
 
-Route::middleware('auth')->prefix('analytics')->group(function (): void {
+Route::middleware('auth')->prefix('api/sites/{site}/analytics')->group(function (): void {
     Route::get('summary', [AnalyticsController::class, 'summary']);
     Route::get('timeline', [AnalyticsController::class, 'timeline']);
     Route::get('top-pages', [AnalyticsController::class, 'topPages']);

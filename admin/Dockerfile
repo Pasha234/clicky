@@ -27,6 +27,11 @@ RUN apk add --no-cache $PHPIZE_DEPS libpq-dev libzip-dev oniguruma-dev icu-dev l
 
 COPY . .
 
+COPY docker/entrypoint.sh /usr/local/bin/admin-entrypoint
+RUN chmod +x /usr/local/bin/admin-entrypoint
+
+ENTRYPOINT ["admin-entrypoint"]
+
 FROM runtime-base AS development
 
 COPY --from=development-dependencies /app/vendor ./vendor

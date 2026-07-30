@@ -29,7 +29,7 @@ test('an owner can request an analytics summary', function () {
     ]);
 
     $response = $this->actingAs($user)->getJson(
-        "/analytics/summary?site_id={$site->id}&from=2026-07-01&to=2026-07-17",
+        "/api/sites/{$site->id}/analytics/summary?from=2026-07-01&to=2026-07-17",
     );
 
     $response->assertOk()->assertExactJson([
@@ -49,7 +49,7 @@ test('a user cannot request analytics for a site they do not own', function () {
     Http::fake();
 
     $this->actingAs($otherUser)
-        ->getJson("/analytics/summary?site_id={$site->id}")
+        ->getJson("/api/sites/{$site->id}/analytics/summary")
         ->assertNotFound();
 
     Http::assertNothingSent();
@@ -62,7 +62,7 @@ test('analytics endpoints validate date filters before querying ClickHouse', fun
     Http::fake();
 
     $this->actingAs($user)
-        ->getJson("/analytics/timeline?site_id={$site->id}&from=not-a-date")
+        ->getJson("/api/sites/{$site->id}/analytics/timeline?from=not-a-date")
         ->assertUnprocessable()
         ->assertJsonValidationErrors('from');
 

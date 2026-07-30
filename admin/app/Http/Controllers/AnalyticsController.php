@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Site;
 use App\Services\Analytics\ClickHouseAnalytics;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
@@ -12,35 +13,34 @@ class AnalyticsController extends Controller
 {
     public function __construct(private readonly ClickHouseAnalytics $analytics) {}
 
-    public function summary(Request $request): JsonResponse
+    public function summary(Request $request, Site $site): JsonResponse
     {
-        return $this->respond($request, fn ($filter): array => $this->analytics->summary($filter));
+        return $this->respond($request, $site, fn ($filter): array => $this->analytics->summary($filter));
     }
 
-    public function timeline(Request $request): JsonResponse
+    public function timeline(Request $request, Site $site): JsonResponse
     {
-        return $this->respond($request, fn ($filter): array => ['data' => $this->analytics->timeline($filter)]);
+        return $this->respond($request, $site, fn ($filter): array => ['data' => $this->analytics->timeline($filter)]);
     }
 
-    public function topPages(Request $request): JsonResponse
+    public function topPages(Request $request, Site $site): JsonResponse
     {
-        return $this->respond($request, fn ($filter): array => ['data' => $this->analytics->topPages($filter)]);
+        return $this->respond($request, $site, fn ($filter): array => ['data' => $this->analytics->topPages($filter)]);
     }
 
-    public function referrers(Request $request): JsonResponse
+    public function referrers(Request $request, Site $site): JsonResponse
     {
-        return $this->respond($request, fn ($filter): array => ['data' => $this->analytics->referrers($filter)]);
+        return $this->respond($request, $site, fn ($filter): array => ['data' => $this->analytics->referrers($filter)]);
     }
 
-    private function respond(Request $request, callable $callback): JsonResponse
+    private function respond(Request $request, Site $site, callable $callback): JsonResponse
     {
         $input = $request->validate([
-            'site_id' => ['required', 'uuid'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
 
-        $filter = $this->analytics->filterFor($request->user(), $input);
+        $filter = $this->analytics->filterFor($request->user(), [...$input, 'site_id' => $site->getKey()]);
         abort_unless($filter, 404);
 
         try {
