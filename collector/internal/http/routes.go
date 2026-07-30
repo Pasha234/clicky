@@ -3,14 +3,21 @@ package http
 import (
 	"clicky-go-collector/internal/token"
 	"context"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func setRoutes(app *fiber.App, h *Handler) {
+func setRoutes(app *fiber.App, h *Handler, corsOrigins string) {
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: parseCORSOrigins(corsOrigins),
+		AllowMethods: []string{"GET", "POST", "OPTIONS"},
+	}))
+
 	app.Get("/collect", h.collectGet)
 
 	app.Post("/collect", h.collectPost)
@@ -39,8 +46,24 @@ func setRoutes(app *fiber.App, h *Handler) {
 			}
 		}
 
+		if err := h.limiter.Ready(ctx); err != nil {
+			return fiber.NewError(
+				fiber.StatusServiceUnavailable,
+				"Redis is unavailable",
+			)
+		}
+
 		return c.SendStatus(fiber.StatusOK)
 	})
 
 	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
+}
+
+func parseCORSOrigins(origins string) []string {
+	values := strings.Split(origins, ",")
+	for i := range values {
+		values[i] = strings.TrimSpace(values[i])
+	}
+
+	return values
 }

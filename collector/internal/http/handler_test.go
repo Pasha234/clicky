@@ -106,11 +106,13 @@ type fakeLimiter struct {
 	allowed bool
 	err     error
 	calls   int
+	ip      string
 }
 
-func (l *fakeLimiter) Allow(_ context.Context, _ string, _ string) (bool, error) {
+func (l *fakeLimiter) Allow(_ context.Context, _ string, ip string) (ratelimit.Decision, error) {
 	l.calls++
-	return l.allowed, l.err
+	l.ip = ip
+	return ratelimit.Decision{Allowed: l.allowed}, l.err
 }
 
 func (l *fakeLimiter) Ready(_ context.Context) error { return nil }

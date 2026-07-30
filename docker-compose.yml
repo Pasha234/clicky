@@ -155,6 +155,11 @@ services:
       RABBITMQ_URL: amqp://clicky:clicky_local_password@rabbitmq:5672/
       RABBITMQ_QUEUE: click_events
       DATABASE_URL: postgres://clicky:${POSTGRES_PASSWORD:-clicky_local_password}@pgbouncer:5432/clicky?sslmode=disable&default_query_exec_mode=exec
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      COLLECTOR_CORS_ORIGINS: ${COLLECTOR_CORS_ORIGINS:-*}
+      # Keep empty locally: Docker clients connect directly, not through an ingress.
+      COLLECTOR_TRUSTED_PROXIES: ${COLLECTOR_TRUSTED_PROXIES:-}
     ports:
       - "3000:3000"
     depends_on:

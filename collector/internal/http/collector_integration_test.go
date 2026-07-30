@@ -121,6 +121,53 @@ func TestCollectorRejectsOversizedRequestWithoutPublishing(t *testing.T) {
 	assertQueueHasNoMessage(t, queueName)
 }
 
+func TestCollectorUsesForwardedIPFromTrustedProxy(t *testing.T) {
+	requireCollectorIntegration(t)
+	limiter := &fakeLimiter{allowed: true}
+	handler := NewHandler(
+		&fakePublisher{},
+		&fakeValidator{siteID: "site"},
+		Options{
+			Limiter:        limiter,
+			ProxyHeader:    "X-Forwarded-For",
+			TrustedProxies: []string{"127.0.0.0/8"},
+		},
+	)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for collector: %v", err)
+	}
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- handler.fiber.Listener(listener) }()
+	t.Cleanup(func() {
+		_ = handler.fiber.Shutdown()
+		<-serverDone
+	})
+
+	request, err := stdhttp.NewRequest(
+		stdhttp.MethodPost,
+		"http://"+listener.Addr().String()+"/collect",
+		strings.NewReader(`{"token":"clk_test","event":"click","url":"https://example.com"}`),
+	)
+	if err != nil {
+		t.Fatalf("create collector request: %v", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Forwarded-For", "203.0.113.42")
+
+	response, err := (&stdhttp.Client{}).Do(request)
+	if err != nil {
+		t.Fatalf("collector request: %v", err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	if response.StatusCode != stdhttp.StatusAccepted {
+		t.Fatalf("status = %d, want %d", response.StatusCode, stdhttp.StatusAccepted)
+	}
+	if limiter.ip != "203.0.113.42" {
+		t.Fatalf("rate-limit IP = %q, want client forwarded IP", limiter.ip)
+	}
+}
+
 func requireCollectorIntegration(t *testing.T) {
 	t.Helper()
 	if os.Getenv("RUN_INTEGRATION_TESTS") != "1" {

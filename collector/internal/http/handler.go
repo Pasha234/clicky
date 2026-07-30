@@ -4,7 +4,9 @@ import (
 	"clicky-go-collector/internal/event"
 	"clicky-go-collector/internal/queue"
 	"clicky-go-collector/internal/queue/metrics"
+	"clicky-go-collector/internal/ratelimit"
 	"clicky-go-collector/internal/token"
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -15,27 +17,61 @@ import (
 type Handler struct {
 	publisher queue.Publisher
 	tokens    token.Validator
+	limiter   ratelimit.Limiter
 	fiber     *fiber.App
 }
 
 const maxRequestBodySize = 64 * 1024
 
-func NewHandler(publisher queue.Publisher, tokens token.Validator) *Handler {
-	app := fiber.New(fiber.Config{BodyLimit: maxRequestBodySize})
+type Options struct {
+	Limiter        ratelimit.Limiter
+	CORSOrigins    string
+	ProxyHeader    string
+	TrustedProxies []string
+}
+
+func NewHandler(publisher queue.Publisher, tokens token.Validator, options ...Options) *Handler {
+	option := Options{
+		Limiter:     ratelimit.AllowAll{},
+		CORSOrigins: "*",
+	}
+	if len(options) > 0 {
+		option = options[0]
+		if option.Limiter == nil {
+			option.Limiter = ratelimit.AllowAll{}
+		}
+		if option.CORSOrigins == "" {
+			option.CORSOrigins = "*"
+		}
+	}
+	app := fiber.New(fiber.Config{
+		BodyLimit:          maxRequestBodySize,
+		ProxyHeader:        option.ProxyHeader,
+		TrustProxy:         len(option.TrustedProxies) > 0,
+		EnableIPValidation: true,
+		TrustProxyConfig: fiber.TrustProxyConfig{
+			Proxies: option.TrustedProxies,
+		},
+	})
 
 	h := &Handler{
 		publisher: publisher,
 		tokens:    tokens,
+		limiter:   option.Limiter,
 		fiber:     app,
 	}
 
-	setRoutes(app, h)
+	setRoutes(app, h, option.CORSOrigins)
 
 	return h
 }
 
 func (h *Handler) Listen(addr string) error {
 	return h.fiber.Listen(addr)
+}
+
+func (h *Handler) Shutdown(ctx context.Context) error {
+	return h.fiber.ShutdownWithContext(ctx)
 }
 
 func (h *Handler) collectGet(c fiber.Ctx) error {
@@ -92,12 +128,25 @@ func (h *Handler) collect(c fiber.Ctx, input event.Input) error {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 
+	decision, err := h.limiter.Allow(c.Context(), normalized.Token, normalized.IP.String())
+	if err != nil {
+		metrics.RequestsTotal.WithLabelValues(c.Method(), "503").Inc()
+		return fiber.NewError(fiber.StatusServiceUnavailable, "rate limiting unavailable")
+	}
+	if !decision.Allowed {
+		metrics.RateLimitedRequests.WithLabelValues(decision.ExceededDimension).Inc()
+		metrics.RequestsTotal.WithLabelValues(c.Method(), "429").Inc()
+		return fiber.NewError(fiber.StatusTooManyRequests, "rate limit exceeded")
+	}
+
 	siteID, err := h.tokens.Validate(c.Context(), normalized.Token)
 
 	switch {
 	case errors.Is(err, token.ErrInvalid):
+		metrics.RequestsTotal.WithLabelValues(c.Method(), "401").Inc()
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid token")
 	case err != nil:
+		metrics.RequestsTotal.WithLabelValues(c.Method(), "503").Inc()
 		return fiber.NewError(
 			fiber.StatusServiceUnavailable,
 			"token validation unavailable",
@@ -106,7 +155,11 @@ func (h *Handler) collect(c fiber.Ctx, input event.Input) error {
 
 	normalized.SiteID = siteID
 
-	if err := h.publisher.Publish(c.Context(), &normalized); err != nil {
+	publishStarted := time.Now()
+	err = h.publisher.Publish(c.Context(), &normalized)
+	metrics.QueuePublishDuration.Observe(time.Since(publishStarted).Seconds())
+	if err != nil {
+		metrics.QueuePublishFailures.Inc()
 		metrics.RequestsTotal.WithLabelValues(c.Method(), "503").Inc()
 		return fiber.NewError(fiber.StatusServiceUnavailable, "queue unavailable")
 	}

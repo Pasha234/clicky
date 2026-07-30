@@ -32,6 +32,21 @@ var (
 			Help: "Total RabbitMQ publish failures.",
 		},
 	)
+
+	QueuePublishDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name: "collector_queue_publish_duration_seconds",
+			Help: "Time spent publishing an event to RabbitMQ.",
+		},
+	)
+
+	RateLimitedRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "collector_rate_limited_requests_total",
+			Help: "Total collector requests rejected by rate limiting.",
+		},
+		[]string{"dimension"},
+	)
 )
 
 func Register() {
@@ -40,5 +55,7 @@ func Register() {
 		RequestDuration,
 		InvalidEvents,
 		QueuePublishFailures,
+		QueuePublishDuration,
+		RateLimitedRequests,
 	)
 }
