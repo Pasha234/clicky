@@ -294,20 +294,28 @@ func TestClickHouseEventStoreInsert(t *testing.T) {
 	x, y := uint16(12), uint16(34)
 	want.X = &x
 	want.Y = &y
+	want.Country = "Germany"
+	want.City = "Berlin"
+	want.Device = "Desktop"
+	want.Browser = "Chrome"
+	want.OS = "Linux"
 
 	if err := eventStore.Insert(ctx, []event.Event{want}); err != nil {
 		t.Fatalf("Insert() error: %v", err)
 	}
 
 	var (
-		siteID, token, eventType, url, referrer, userAgent, ip, meta string
-		gotX, gotY                                                   uint16
-		createdAt                                                    int64
+		siteID, token, eventType, url, referrer, userAgent, ip string
+		country, city, device, browser, os                     string
+		meta                                                   string
+		gotX, gotY                                             uint16
+		createdAt                                              int64
 	)
 	err = conn.QueryRow(ctx, `
 		SELECT
 			toString(site_id), token, event_type, url, referrer,
-			user_agent, toString(ip), ifNull(x, toUInt16(0)),
+			user_agent, toString(ip), country, city, device, browser, os,
+			ifNull(x, toUInt16(0)),
 			ifNull(y, toUInt16(0)), meta, toUnixTimestamp64Milli(created_at)
 		FROM events
 	`).Scan(
@@ -318,6 +326,11 @@ func TestClickHouseEventStoreInsert(t *testing.T) {
 		&referrer,
 		&userAgent,
 		&ip,
+		&country,
+		&city,
+		&device,
+		&browser,
+		&os,
 		&gotX,
 		&gotY,
 		&meta,
@@ -338,6 +351,9 @@ func TestClickHouseEventStoreInsert(t *testing.T) {
 	}
 	if url != want.URL || referrer != want.Referrer || userAgent != want.UserAgent {
 		t.Errorf("stored request fields differ from event")
+	}
+	if country != want.Country || city != want.City || device != want.Device || browser != want.Browser || os != want.OS {
+		t.Errorf("stored enrichment fields differ from event")
 	}
 	wantIP := want.IP.String()
 	if want.IP.To4() != nil {

@@ -60,6 +60,17 @@ final class ClickHouseAnalytics
         ];
     }
 
+    public function eventsToday(AnalyticsFilter $filter): int
+    {
+        $today = CarbonImmutable::today();
+
+        return $this->summary(new AnalyticsFilter(
+            $filter->site,
+            $today,
+            $today->addDay(),
+        ))['events'];
+    }
+
     /** @return list<array{date: string, events: int}> */
     public function timeline(AnalyticsFilter $filter): array
     {
@@ -120,6 +131,33 @@ final class ClickHouseAnalytics
               AND created_at < parseDateTimeBestEffort({to:String})
             GROUP BY referrer
             ORDER BY events DESC
+            LIMIT 10
+            FORMAT JSON
+            SQL, $filter));
+    }
+
+    /** @return list<array{label: string, events: int}> */
+    public function breakdown(AnalyticsFilter $filter, string $dimension): array
+    {
+        $column = match ($dimension) {
+            'event_type' => 'event_type',
+            'browser' => 'browser',
+            'device' => 'device',
+            'country' => 'country',
+            default => throw new RuntimeException("Unsupported analytics breakdown: {$dimension}"),
+        };
+
+        return array_map(fn (array $row): array => [
+            'label' => (string) $row['label'],
+            'events' => (int) $row['events'],
+        ], $this->select(<<<SQL
+            SELECT if({$column} = '', 'Unknown', {$column}) AS label, count() AS events
+            FROM events
+            WHERE site_id = {site_id:UUID}
+              AND created_at >= parseDateTimeBestEffort({from:String})
+              AND created_at < parseDateTimeBestEffort({to:String})
+            GROUP BY label
+            ORDER BY events DESC, label ASC
             LIMIT 10
             FORMAT JSON
             SQL, $filter));

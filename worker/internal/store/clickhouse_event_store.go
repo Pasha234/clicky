@@ -11,17 +11,32 @@ import (
 )
 
 type ClickHouseEventStore struct {
-	conn driver.Conn
+	conn     driver.Conn
+	enricher EventEnricher
 }
 
-func NewClickHouseEventStore(ctx context.Context, dsn string) (*ClickHouseEventStore, error) {
+type EventEnricher interface {
+	Enrich(*event.Event)
+}
+
+func NewClickHouseEventStore(
+	ctx context.Context,
+	dsn string,
+	enrichers ...EventEnricher,
+) (*ClickHouseEventStore, error) {
 	conn, err := connect(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
 
+	var enricher EventEnricher
+	if len(enrichers) > 0 {
+		enricher = enrichers[0]
+	}
+
 	return &ClickHouseEventStore{
-		conn: conn,
+		conn:     conn,
+		enricher: enricher,
 	}, nil
 }
 
@@ -51,7 +66,8 @@ func (s *ClickHouseEventStore) Insert(ctx context.Context, events []event.Event)
 	batch, err := s.conn.PrepareBatch(ctx, `
 		INSERT INTO events (
 			site_id, token, event_type, url, referrer,
-			user_agent, ip, x, y, meta, created_at
+			user_agent, ip, country, city, device, browser, os,
+			x, y, meta, created_at
 		)
 	`)
 	if err != nil {
@@ -59,6 +75,10 @@ func (s *ClickHouseEventStore) Insert(ctx context.Context, events []event.Event)
 	}
 
 	for _, event := range events {
+		if s.enricher != nil {
+			s.enricher.Enrich(&event)
+		}
+
 		meta, err := json.Marshal(event.Meta)
 		if err != nil {
 			return err
@@ -72,6 +92,11 @@ func (s *ClickHouseEventStore) Insert(ctx context.Context, events []event.Event)
 			event.Referrer,
 			event.UserAgent,
 			event.IP.String(),
+			event.Country,
+			event.City,
+			event.Device,
+			event.Browser,
+			event.OS,
 			event.X,
 			event.Y,
 			string(meta),

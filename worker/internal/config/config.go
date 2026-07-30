@@ -19,6 +19,7 @@ type Config struct {
 	MaxInsertAttempts int
 	RetryInitialDelay time.Duration
 	RetryMaxDelay     time.Duration
+	GeoIPDatabasePath string
 }
 
 func Load() (*Config, error) {
@@ -61,6 +62,7 @@ func Load() (*Config, error) {
 		MaxInsertAttempts: maxInsertAttempts,
 		RetryInitialDelay: retryInitialDelay,
 		RetryMaxDelay:     retryMaxDelay,
+		GeoIPDatabasePath: os.Getenv("GEOIP_DATABASE_PATH"),
 	}, nil
 }
 

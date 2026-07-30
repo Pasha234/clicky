@@ -53,3 +53,19 @@ test('top pages and referrers expose typed API data', function () {
     ]);
     Http::assertSentCount(2);
 });
+
+test('breakdowns map labels and numeric ClickHouse values', function () {
+    Http::fake(['*' => Http::response(['data' => [
+        ['label' => 'Chrome', 'events' => '9'],
+        ['label' => 'Unknown', 'events' => '2'],
+    ]])]);
+
+    expect(app(ClickHouseAnalytics::class)->breakdown(analyticsFilter(), 'browser'))->toBe([
+        ['label' => 'Chrome', 'events' => 9],
+        ['label' => 'Unknown', 'events' => 2],
+    ]);
+
+    Http::assertSent(function ($request): bool {
+        return str_contains($request->body(), "if(browser = '', 'Unknown', browser)");
+    });
+});

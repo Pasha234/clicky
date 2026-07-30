@@ -17,6 +17,11 @@ type Event struct {
 	Referrer  string         `json:"referrer"`
 	IP        net.IP         `json:"ip"`
 	UserAgent string         `json:"user_agent"`
+	Country   string         `json:"country,omitempty"`
+	City      string         `json:"city,omitempty"`
+	Device    string         `json:"device,omitempty"`
+	Browser   string         `json:"browser,omitempty"`
+	OS        string         `json:"os,omitempty"`
 	X         *uint16        `json:"x"`
 	Y         *uint16        `json:"y"`
 	Meta      map[string]any `json:"meta"`

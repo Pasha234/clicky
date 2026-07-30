@@ -3,6 +3,7 @@ package app
 import (
 	batcher2 "clicky-go-worker/internal/batcher"
 	"clicky-go-worker/internal/config"
+	"clicky-go-worker/internal/enrichment"
 	"clicky-go-worker/internal/metrics"
 	"clicky-go-worker/internal/queue"
 	store2 "clicky-go-worker/internal/store"
@@ -68,7 +69,17 @@ func (app App) Start() {
 
 	batcher := batcher2.New(cfg.BatchSize)
 
-	store, err := store2.NewClickHouseEventStore(ctx, cfg.ClickhouseDSN)
+	enricher, err := enrichment.New(cfg.GeoIPDatabasePath)
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err := enricher.Close(); err != nil {
+			log.Printf("close GeoIP database: %v", err)
+		}
+	}()
+
+	store, err := store2.NewClickHouseEventStore(ctx, cfg.ClickhouseDSN, enricher)
 
 	if err != nil {
 		panic(err)

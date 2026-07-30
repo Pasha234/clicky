@@ -24,13 +24,16 @@ class AnalyticsOverview extends StatsOverviewWidget
         if (! $filter) {
             return [
                 Stat::make('Events', '—'),
+                Stat::make('Events today', '—'),
                 Stat::make('Clicks', '—'),
                 Stat::make('Unique visitors', '—'),
             ];
         }
 
         try {
-            $summary = app(ClickHouseAnalytics::class)->summary($filter);
+            $analytics = app(ClickHouseAnalytics::class);
+            $summary = $analytics->summary($filter);
+            $eventsToday = $analytics->eventsToday($filter);
         } catch (RequestException|RuntimeException $e) {
             return [
                 Stat::make('Analytics unavailable', '—')
@@ -40,6 +43,8 @@ class AnalyticsOverview extends StatsOverviewWidget
 
         return [
             Stat::make('Events', number_format($summary['events'])),
+            Stat::make('Events today', number_format($eventsToday))
+                ->description('Since midnight'),
             Stat::make('Clicks', number_format($summary['clicks'])),
             Stat::make('Unique visitors', number_format($summary['unique_visitors'])),
         ];
