@@ -6,6 +6,10 @@ return [
         'url' => env('COLLECTOR_URL', 'http://localhost:3000'),
     ],
 
+    'tracking_tokens' => [
+        'cache_ttl' => env('TOKEN_CACHE_TTL', '5m'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

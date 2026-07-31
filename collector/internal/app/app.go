@@ -32,11 +32,21 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	defer publisher.Close()
 
-	tokens, err := token.NewPostgresValidator(ctx, cfg.Database)
+	postgresTokens, err := token.NewPostgresValidator(ctx, cfg.Database)
 	if err != nil {
 		return fmt.Errorf("create token validator: %w", err)
 	}
-	defer tokens.Close()
+	defer postgresTokens.Close()
+
+	tokens, err := token.NewRedisValidator(ctx, cfg.Redis, postgresTokens)
+	if err != nil {
+		return fmt.Errorf("create Redis token validator: %w", err)
+	}
+	defer func() {
+		if err := tokens.Close(); err != nil {
+			log.Printf("close Redis token validator: %v", err)
+		}
+	}()
 
 	limiter, err := ratelimit.NewRedisLimiter(ctx, cfg.Redis, cfg.HTTP.RateLimitPerMinute)
 	if err != nil {

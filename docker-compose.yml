@@ -156,6 +156,7 @@ services:
       RABBITMQ_QUEUE: click_events
       DATABASE_URL: postgres://clicky:${POSTGRES_PASSWORD:-clicky_local_password}@pgbouncer:5432/clicky?sslmode=disable&default_query_exec_mode=exec
       REDIS_URL: redis://redis:6379/0
+      TOKEN_CACHE_TTL: ${TOKEN_CACHE_TTL:-5m}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       COLLECTOR_CORS_ORIGINS: ${COLLECTOR_CORS_ORIGINS:-*}
       # Keep empty locally: Docker clients connect directly, not through an ingress.
@@ -218,6 +219,7 @@ services:
       REDIS_CLIENT: phpredis
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      TOKEN_CACHE_TTL: ${TOKEN_CACHE_TTL:-5m}
       SESSION_DRIVER: database
       CACHE_STORE: database
       COLLECTOR_URL: http://collector:3000
@@ -228,6 +230,7 @@ services:
     command: >
       sh -c "php artisan config:clear &&
       php artisan migrate --force &&
+      php artisan tracking-tokens:sync-cache &&
       php artisan serve --host=0.0.0.0 --port=8000"
     ports:
       - "8000:8000"

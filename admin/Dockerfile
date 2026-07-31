@@ -22,6 +22,8 @@ WORKDIR /var/www/html
 
 RUN apk add --no-cache $PHPIZE_DEPS libpq-dev libzip-dev oniguruma-dev icu-dev libxml2-dev \
     && docker-php-ext-install pdo_pgsql mbstring bcmath intl dom \
+	&& pecl install redis \
+	&& docker-php-ext-enable redis \
     && apk add --no-cache libpq libzip oniguruma icu-libs libxml2 \
     && apk del $PHPIZE_DEPS libpq-dev libzip-dev oniguruma-dev icu-dev libxml2-dev
 

@@ -2,13 +2,17 @@ package config
 
 import (
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const defaultBrokerURI = "amqp://clicky:clicky_local_password@127.0.0.1:5672/"
 const defaultDatabaseURL = "postgres://clicky:clicky_local_password@127.0.0.1:6432/clicky?sslmode=disable&default_query_exec_mode=exec"
 const defaultRedisURL = "redis://127.0.0.1:6379/0"
+
+var tokenCacheTTLPattern = regexp.MustCompile("^[1-9][0-9]*(s|m|h)$")
 
 type Config struct {
 	RabbitMQ RabbitMQ
@@ -27,7 +31,8 @@ type Database struct {
 }
 
 type Redis struct {
-	URL string
+	URL           string
+	TokenCacheTTL time.Duration
 }
 
 type HTTP struct {
@@ -52,7 +57,8 @@ func Load() *Config {
 			URL: databaseURL(),
 		},
 		Redis: Redis{
-			URL: redisURL(),
+			URL:           redisURL(),
+			TokenCacheTTL: tokenCacheTTLEnv(),
 		},
 		HTTP: HTTP{
 			CORSOrigins:        envOrDefault("COLLECTOR_CORS_ORIGINS", "*"),
@@ -61,6 +67,36 @@ func Load() *Config {
 			TrustedProxies:     commaSeparatedEnv("COLLECTOR_TRUSTED_PROXIES"),
 		},
 	}
+}
+
+func tokenCacheTTLEnv() time.Duration {
+	const fallback = 5 * time.Minute
+
+	value := os.Getenv("TOKEN_CACHE_TTL")
+	if !tokenCacheTTLPattern.MatchString(value) {
+		return fallback
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+
+	return duration
+}
+
+func durationEnv(name string, fallback time.Duration) time.Duration {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return fallback
+	}
+
+	return duration
 }
 
 func commaSeparatedEnv(name string) []string {

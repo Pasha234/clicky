@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\TokenGenerator;
+use App\Services\TrackingTokenCache;
 use Database\Factories\SiteFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 
 class Site extends Model
 {
@@ -47,6 +49,22 @@ class Site extends Model
         static::created(function (self $site): void {
             $site->rotateToken();
         });
+
+        static::updating(function (self $site): void {
+            if ($site->isDirty('enabled') && ! $site->enabled) {
+                $site->invalidateTrackingTokenCache();
+            }
+        });
+
+        static::updated(function (self $site): void {
+            if ($site->wasChanged('enabled') && $site->enabled) {
+                $site->syncTrackingTokenCache();
+            }
+        });
+
+        static::deleting(function (self $site): void {
+            $site->invalidateTrackingTokenCache();
+        });
     }
 
     /**
@@ -77,20 +95,46 @@ class Site extends Model
 
     public function rotateToken(): ApiToken
     {
-        $this->apiTokens()
-            ->whereNull('revoked_at')
-            ->update(['revoked_at' => now()]);
+        $oldTokens = $this->apiTokens()->active()->pluck('token');
+        $oldTokens->each(fn (string $token): mixed => app(TrackingTokenCache::class)->forget($token));
 
         $token = app(TokenGenerator::class)->generate();
+        $apiToken = DB::transaction(function () use ($token): ApiToken {
+            $this->apiTokens()
+                ->whereNull('revoked_at')
+                ->update(['revoked_at' => now()]);
 
-        $apiToken = $this->apiTokens()->create([
-            'token' => $token,
-            'prefix' => substr($token, 0, 12),
-        ]);
+            return $this->apiTokens()->create([
+                'token' => $token,
+                'prefix' => substr($token, 0, 12),
+            ]);
+        });
 
         $this->unsetRelation('activeToken');
 
+        if ($this->enabled) {
+            app(TrackingTokenCache::class)->publish($apiToken);
+        }
+
         return $apiToken;
+    }
+
+    public function syncTrackingTokenCache(): void
+    {
+        if (! $this->enabled) {
+            return;
+        }
+
+        foreach ($this->apiTokens()->active()->get() as $token) {
+            app(TrackingTokenCache::class)->publish($token);
+        }
+    }
+
+    public function invalidateTrackingTokenCache(): void
+    {
+        $this->apiTokens()->pluck('token')->each(
+            fn (string $token): mixed => app(TrackingTokenCache::class)->forget($token),
+        );
     }
 
     public function trackingSnippet(): string
