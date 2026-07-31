@@ -168,6 +168,8 @@ services:
         condition: service_healthy
       pgbouncer:
         condition: service_started
+      redis:
+        condition: service_healthy
 
   worker:
     build:
