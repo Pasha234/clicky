@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clicky-config
+data:
+  POSTGRES_DB: clicky
+  POSTGRES_USER: clicky
+  RABBITMQ_USER: clicky
+  RABBITMQ_QUEUE: click_events
+  CLICKHOUSE_DATABASE: clicky
+  CLICKHOUSE_USER: clicky
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: http://clicky.local
+  DB_CONNECTION: pgsql
+  DB_HOST: pgbouncer
+  DB_PORT: "5432"
+  DB_DATABASE: clicky
+  DB_USERNAME: clicky
+  DB_SSLMODE: disable
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_URL: redis://redis:6379/0
+  RATE_LIMIT_PER_MINUTE: "120"
+  COLLECTOR_CORS_ORIGINS: "*"
+  COLLECTOR_PROXY_HEADER: X-Forwarded-For
+  # NGINX Ingress normally reaches services from a private cluster address.
+  # Replace these CIDRs with your ingress controller's actual pod/node CIDRs.
+  COLLECTOR_TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+  SESSION_DRIVER: database
+  CACHE_STORE: database
+  COLLECTOR_URL: http://clicky.local
+  CLICKHOUSE_URL: http://clickhouse:8123
+  BATCH_SIZE: "1000"
+  FLUSH_INTERVAL: 2s
+  MAX_INSERT_ATTEMPTS: "5"
+  RETRY_INITIAL_DELAY: 1s
+  RETRY_MAX_DELAY: 30s
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-migrations
+data:
+  migrate.sh: |
+    #!/bin/sh
+    set -eu
+    client() {
+      clickhouse-client --host "$CLICKHOUSE_HOST" --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --database "$CLICKHOUSE_DATABASE" "$@"
+    }
+    client --multiquery <<'SQL'
+    CREATE TABLE IF NOT EXISTS schema_migrations (version String, applied_at DateTime DEFAULT now()) ENGINE = MergeTree ORDER BY version;
+    SQL
+    for file in /migrations/*.sql; do
+      [ -f "$file" ] || continue
+      version=$(basename "$file" .sql)
+      applied=$(client --query "SELECT count() FROM schema_migrations WHERE version = '$version'")
+      [ "$applied" -gt 0 ] && continue
+      client --multiquery < "$file"
+      client --query "INSERT INTO schema_migrations (version) VALUES ('$version')"
+    done
+  001_create_events.sql: |
+    CREATE TABLE IF NOT EXISTS events
+    (
+        site_id UUID, token String, event_type LowCardinality(String), url String,
+        referrer String, user_agent String, ip IPv6,
+        country LowCardinality(String) DEFAULT '', city String DEFAULT '',
+        device LowCardinality(String) DEFAULT '', browser LowCardinality(String) DEFAULT '',
+        os LowCardinality(String) DEFAULT '', x Nullable(UInt16), y Nullable(UInt16),
+        meta String, created_at DateTime64(3)
+    ) ENGINE = MergeTree PARTITION BY toYYYYMM(created_at) ORDER BY (site_id, event_type, created_at);
+  002_upgrade_ip_to_ipv6.sql: |
+    ALTER TABLE events MODIFY COLUMN ip IPv6;

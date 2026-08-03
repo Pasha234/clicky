@@ -4,6 +4,10 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 
+// Kubernetes liveness probe. Keep this independent of sessions and external
+// services so a temporary dependency outage does not restart PHP itself.
+Route::get('/healthz', fn () => response()->noContent());
+
 Route::get('/', function () {
     return redirect(auth()->check() ? '/admin' : '/register');
 });

@@ -10,6 +10,10 @@ beforeEach(function () {
     $this->withoutMiddleware(ValidateCsrfToken::class);
 });
 
+test('the health endpoint is available without authentication', function () {
+    $this->get('/healthz')->assertNoContent();
+});
+
 test('the root page sends guests to registration', function () {
     $this->get('/')->assertRedirect('/register');
 });

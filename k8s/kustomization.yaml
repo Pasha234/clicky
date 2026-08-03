@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: clicky
+
+resources:
+  - namespace.yaml
+  - configmaps.yaml
+  - secrets.yaml
+  - postgres-statefulset.yaml
+  - pgbouncer.yaml
+  - redis-deployment.yaml
+  - rabbitmq-statefulset.yaml
+  - clickhouse-statefulset.yaml
+  - clickhouse-migration-job.yaml
+  - collector.yaml
+  - worker-deployment.yaml
+  - admin.yaml
+  - admin-migration-job.yaml
+  - ingress.yaml
+
+# Replace these names with images in your registry for a remote cluster, e.g.:
+#   newName: ghcr.io/<your-user>/clicky-go-collector
+images:
+  - name: clicky-go-admin
+    newTag: latest
+  - name: clicky-go-collector
+    newTag: latest
+  - name: clicky-go-worker
+    newTag: latest
